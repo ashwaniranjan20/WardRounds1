@@ -1,0 +1,210 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidClinicianProfile(data, userId) {
+      return data.userId is string &&
+             data.userId == userId &&
+             data.displayName is string &&
+             data.displayName.size() >= 1 &&
+             data.displayName.size() <= 120 &&
+             data.role in ['DOCTOR', 'CONSULTANT', 'ADMINISTRATOR'] &&
+             data.department is string &&
+             data.department.size() <= 120 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidPatientRecord(data, userId) {
+      return data.userId is string &&
+             data.userId == userId &&
+             data.uhid is string &&
+             data.uhid.size() >= 1 &&
+             data.uhid.size() <= 64 &&
+             data.name is string &&
+             data.name.size() >= 1 &&
+             data.name.size() <= 120 &&
+             (!('age' in data) || (data.age is int && data.age >= 0 && data.age <= 150)) &&
+             (!('sex' in data) || (data.sex is string && data.sex.size() <= 24)) &&
+             data.ward is string &&
+             data.ward.size() <= 80 &&
+             data.bedNumber is string &&
+             data.bedNumber.size() <= 32 &&
+             data.department is string &&
+             data.department.size() <= 80 &&
+             data.consultant is string &&
+             data.consultant.size() <= 120 &&
+             data.admissionDate is string &&
+             data.admissionDate.size() <= 32 &&
+             data.primaryDiagnosis is string &&
+             data.primaryDiagnosis.size() <= 1000 &&
+             data.allergies is string &&
+             data.allergies.size() <= 500 &&
+             data.discharged is bool &&
+             (!('dischargeDate' in data) || (data.dischargeDate is string && data.dischargeDate.size() <= 32)) &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidClinicalDoc(data, userId) {
+      return data.userId is string &&
+             data.userId == userId &&
+             isValidId(data.patientId) &&
+             data.docCategory in ['DAILY_ROUND', 'CLINICAL_NOTE', 'HANDOVER', 'DISCHARGE_SUMMARY', 'INVESTIGATION'] &&
+             data.title is string &&
+             data.title.size() >= 1 &&
+             data.title.size() <= 240 &&
+             data.clinicalText is string &&
+             data.clinicalText.size() <= 8000 &&
+             data.authorName is string &&
+             data.authorName.size() <= 120 &&
+             data.ward is string &&
+             data.ward.size() <= 80 &&
+             data.docDate is string &&
+             data.docDate.size() <= 32 &&
+             data.docStatus in ['DRAFT', 'ACTIVE', 'FINALIZED', 'ACKNOWLEDGED'] &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+
+      allow create: if isValidId(userId) &&
+                       isOwner(userId) &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'role', 'department', 'createdAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'role', 'department', 'createdAt', 'updatedAt']) &&
+                       isValidClinicianProfile(incoming(), userId);
+
+      allow update: if isValidId(userId) &&
+                       isOwner(userId) &&
+                       isValidClinicianProfile(incoming(), userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'role', 'department', 'updatedAt']);
+
+      allow delete: if isValidId(userId) && isOwner(userId);
+
+      match /patients/{patientId} {
+        allow get: if isValidId(userId) && isValidId(patientId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId);
+
+        allow create: if isValidId(userId) &&
+                         isValidId(patientId) &&
+                         isOwner(userId) &&
+                         incoming().keys().hasAll([
+                           'userId', 'uhid', 'name', 'ward', 'bedNumber',
+                           'department', 'consultant', 'admissionDate',
+                           'primaryDiagnosis', 'allergies', 'discharged', 'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'uhid', 'name', 'age', 'sex', 'ward', 'bedNumber',
+                           'department', 'consultant', 'admissionDate', 'primaryDiagnosis',
+                           'allergies', 'discharged', 'dischargeDate', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidPatientRecord(incoming(), userId);
+
+        allow update: if isValidId(userId) &&
+                         isValidId(patientId) &&
+                         isOwner(userId) &&
+                         isValidPatientRecord(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         existing().discharged == false &&
+                         (
+                           // Action: Update clinical profile
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'uhid', 'name', 'age', 'sex', 'ward', 'bedNumber',
+                             'department', 'consultant', 'admissionDate',
+                             'primaryDiagnosis', 'allergies', 'updatedAt'
+                           ]) ||
+                           // Action: Discharge patient
+                           (
+                             incoming().discharged == true &&
+                             incoming().diff(existing()).affectedKeys().hasOnly([
+                               'discharged', 'dischargeDate', 'updatedAt'
+                             ])
+                           )
+                         );
+
+        allow delete: if isValidId(userId) && isValidId(patientId) && isOwner(userId);
+      }
+
+      match /clinical_notes/{noteId} {
+        allow get: if isValidId(userId) && isValidId(noteId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId);
+
+        allow create: if isValidId(userId) &&
+                         isValidId(noteId) &&
+                         isOwner(userId) &&
+                         incoming().keys().hasAll([
+                           'userId', 'patientId', 'docCategory', 'title',
+                           'clinicalText', 'authorName', 'ward', 'docDate',
+                           'docStatus', 'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'patientId', 'docCategory', 'title',
+                           'clinicalText', 'authorName', 'ward', 'docDate',
+                           'docStatus', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidClinicalDoc(incoming(), userId) &&
+                         exists(/databases/$(database)/documents/users/$(userId)/patients/$(incoming().patientId));
+
+        allow update: if isValidId(userId) &&
+                         isValidId(noteId) &&
+                         isOwner(userId) &&
+                         isValidClinicalDoc(incoming(), userId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().patientId == existing().patientId &&
+                         incoming().docCategory == existing().docCategory &&
+                         incoming().createdAt == existing().createdAt &&
+                         existing().docStatus != 'FINALIZED' &&
+                         existing().docStatus != 'ACKNOWLEDGED' &&
+                         (
+                           // Action: Edit draft or active documentation
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'title', 'clinicalText', 'authorName', 'ward', 'docDate', 'docStatus', 'updatedAt'
+                           ]) ||
+                           // Action: Finalize or acknowledge clinical documentation
+                           (
+                             (incoming().docStatus == 'FINALIZED' || incoming().docStatus == 'ACKNOWLEDGED') &&
+                             incoming().diff(existing()).affectedKeys().hasOnly([
+                               'docStatus', 'clinicalText', 'authorName', 'updatedAt'
+                             ])
+                           )
+                         );
+
+        allow delete: if isValidId(userId) && isValidId(noteId) && isOwner(userId);
+      }
+    }
+  }
+}

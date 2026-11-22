@@ -1,0 +1,6 @@
+{
+  "name": "WardRound",
+  "description": "Digital inpatient clinical documentation, daily rounds, date-wise investigation history, laboratory trend charts, and follow-up management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

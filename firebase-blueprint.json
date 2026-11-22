@@ -1,0 +1,207 @@
+{
+  "entities": {
+    "ClinicianProfile": {
+      "title": "ClinicianProfile",
+      "description": "Authenticated clinician workspace metadata for WardRound.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the signed-in clinician."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Clinician display name."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["DOCTOR", "CONSULTANT", "ADMINISTRATOR"],
+          "description": "Clinical governance role."
+        },
+        "department": {
+          "type": "string",
+          "description": "Primary medical department or ward unit."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created (client must submit FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when last updated (client must submit FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId", "displayName", "role", "department", "createdAt"]
+    },
+    "PatientRecord": {
+      "title": "PatientRecord",
+      "description": "Synced inpatient chart summary mirrored from Room PatientEntity.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "uhid": {
+          "type": "string",
+          "description": "Unique Hospital ID."
+        },
+        "name": {
+          "type": "string",
+          "description": "Patient full name."
+        },
+        "age": {
+          "type": "integer",
+          "description": "Patient age in years."
+        },
+        "sex": {
+          "type": "string",
+          "description": "Patient sex."
+        },
+        "ward": {
+          "type": "string",
+          "description": "Assigned inpatient ward."
+        },
+        "bedNumber": {
+          "type": "string",
+          "description": "Assigned bed number."
+        },
+        "department": {
+          "type": "string",
+          "description": "Treating clinical department."
+        },
+        "consultant": {
+          "type": "string",
+          "description": "Attending consultant name."
+        },
+        "admissionDate": {
+          "type": "string",
+          "description": "Admission date (YYYY-MM-DD)."
+        },
+        "primaryDiagnosis": {
+          "type": "string",
+          "description": "Primary working diagnosis."
+        },
+        "allergies": {
+          "type": "string",
+          "description": "Recorded drug allergies."
+        },
+        "discharged": {
+          "type": "boolean",
+          "description": "Whether the patient has been discharged."
+        },
+        "dischargeDate": {
+          "type": "string",
+          "description": "Discharge date if discharged."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created (client must submit FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when last updated (client must submit FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "uhid",
+        "name",
+        "ward",
+        "bedNumber",
+        "department",
+        "consultant",
+        "admissionDate",
+        "primaryDiagnosis",
+        "allergies",
+        "discharged",
+        "createdAt"
+      ]
+    },
+    "ClinicalDoc": {
+      "title": "ClinicalDoc",
+      "description": "Clinical documentation record (daily round, progress note, handover, or discharge summary).",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "patientId": {
+          "type": "string",
+          "description": "Parent patient document ID in /users/{userId}/patients."
+        },
+        "docCategory": {
+          "type": "string",
+          "enum": ["DAILY_ROUND", "CLINICAL_NOTE", "HANDOVER", "DISCHARGE_SUMMARY", "INVESTIGATION"],
+          "description": "Clinical documentation category."
+        },
+        "title": {
+          "type": "string",
+          "description": "Document headline."
+        },
+        "clinicalText": {
+          "type": "string",
+          "description": "Structured clinical documentation body."
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Authoring or signing clinician."
+        },
+        "ward": {
+          "type": "string",
+          "description": "Ward location."
+        },
+        "docDate": {
+          "type": "string",
+          "description": "Clinical documentation date."
+        },
+        "docStatus": {
+          "type": "string",
+          "enum": ["DRAFT", "ACTIVE", "FINALIZED", "ACKNOWLEDGED"],
+          "description": "Workflow lifecycle state."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created (client must submit FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when last updated (client must submit FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "patientId",
+        "docCategory",
+        "title",
+        "clinicalText",
+        "authorName",
+        "ward",
+        "docDate",
+        "docStatus",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/ClinicianProfile" },
+      "description": "Private clinician profile and active department role."
+    },
+    "/users/{userId}/patients/{patientId}": {
+      "schema": { "$ref": "#/entities/PatientRecord" },
+      "description": "Clinician-owned inpatient records synchronized with local Room storage."
+    },
+    "/users/{userId}/clinical_notes/{noteId}": {
+      "schema": { "$ref": "#/entities/ClinicalDoc" },
+      "description": "Clinician-owned rounds, progress notes, SBAR handovers, and discharge summaries synchronized with Room."
+    }
+  }
+}
